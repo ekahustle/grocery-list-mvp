@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grocery List Mingguan</title>
+  <meta name="description" content="Pilih menu mingguan, review stok, dan dapatkan grocery list belanja otomatis." />
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="dotted-bg"></div>
+    <div class="header__inner">
+      <h1 class="header__title">🛒 Grocery List Mingguan</h1>
+      <div id="stepper" class="stepper"></div>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="app-footer">
+    Data menu bank dari Supabase (read-only) · Riwayat tersimpan di browser ini saja
+  </footer>
+
+  <script src="./js/config.js"></script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
