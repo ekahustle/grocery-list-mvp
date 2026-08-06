@@ -11,8 +11,8 @@ import {
   clearCurrentProgress,
 } from "./storage.js";
 
-const MIN_MENU = 5;
-const MAX_MENU = 10;
+const SLOT_COUNT = 15;
+const MIN_FILLED = 5;
 
 const appEl = document.getElementById("app");
 const stepperEl = document.getElementById("stepper");
@@ -22,7 +22,7 @@ const stepperEl = document.getElementById("stepper");
 let allRecipes = [];
 let progress = getCurrentProgress() || {
   step: 1,
-  selectedRecipeIds: [],
+  menuSlots: Array(SLOT_COUNT).fill(null),
   mergedIngredients: [],
   reviewStatuses: {},
   checklist: {},
@@ -73,18 +73,18 @@ async function renderStep1() {
   appEl.innerHTML = `
     <section class="panel">
       <h1 class="panel__title">Pilih Menu Minggu Ini</h1>
-      <p class="panel__desc">Pilih 5–10 menu bebas dari menu bank. Bahan-bahannya nanti otomatis digabung tanpa duplikasi.</p>
+      <p class="panel__desc">Isi minimal 5 dari 15 slot menu. Klik sebuah slot untuk memilih resep dari menu bank — resep yang sama boleh dipakai di beberapa slot. Bahan-bahannya nanti otomatis digabung tanpa duplikasi.</p>
       <div id="recipe-status" class="status"></div>
-      <div id="recipe-grid" class="recipe-grid"></div>
+      <div id="menu-slot-grid" class="menu-slot-grid"></div>
       <div class="panel__footer">
-        <span id="selection-count" class="badge-mono">0/${MAX_MENU} dipilih</span>
+        <span id="selection-count" class="badge-mono">0/${SLOT_COUNT} terisi</span>
         <button id="btn-next" class="btn btn--primary" disabled>Lanjut ke Review Stok →</button>
       </div>
     </section>
   `;
 
   const statusEl = document.getElementById("recipe-status");
-  const gridEl = document.getElementById("recipe-grid");
+  const gridEl = document.getElementById("menu-slot-grid");
   const countEl = document.getElementById("selection-count");
   const nextBtn = document.getElementById("btn-next");
 
@@ -112,35 +112,114 @@ async function renderStep1() {
     return;
   }
 
-  gridEl.innerHTML = allRecipes.map(recipeCardHtml).join("");
+  let openSlotIndex = null;
 
-  function updateSelectionUi() {
-    const count = progress.selectedRecipeIds.length;
-    countEl.textContent = `${count}/${MAX_MENU} dipilih`;
-    countEl.classList.toggle("badge-mono--ok", count >= MIN_MENU && count <= MAX_MENU);
-    nextBtn.disabled = !(count >= MIN_MENU && count <= MAX_MENU);
-    gridEl.querySelectorAll(".recipe-card").forEach((card) => {
-      const id = card.dataset.id;
-      card.classList.toggle("recipe-card--selected", progress.selectedRecipeIds.includes(id));
+  function renderGrid() {
+    gridEl.innerHTML = Array.from({ length: SLOT_COUNT }, (_, i) => slotHtml(i)).join("");
+    attachSlotHandlers();
+    updateSelectionUi();
+  }
+
+  function slotHtml(index) {
+    const recipeId = progress.menuSlots[index];
+    const recipe = recipeId ? allRecipes.find((r) => String(r.id) === String(recipeId)) : null;
+    const isOpen = openSlotIndex === index;
+    return `
+      <div class="menu-slot ${recipe ? "menu-slot--filled" : ""} ${isOpen ? "menu-slot--open" : ""}" data-index="${index}">
+        <button type="button" class="menu-slot__trigger">
+          ${
+            recipe
+              ? slotFilledBodyHtml(recipe)
+              : `<span class="menu-slot__index">${index + 1}</span><span class="menu-slot__placeholder">+ Pilih menu</span>`
+          }
+        </button>
+        ${isOpen ? slotAccordionHtml(recipe) : ""}
+      </div>
+    `;
+  }
+
+  function slotFilledBodyHtml(recipe) {
+    const initial = (recipe.name || "?").trim().charAt(0).toUpperCase();
+    return `
+      ${
+        recipe.image_url
+          ? `<img class="menu-slot__img" src="${escapeHtml(recipe.image_url)}" alt="${escapeHtml(recipe.name)}" />`
+          : `<div class="menu-slot__img menu-slot__img--placeholder">${initial}</div>`
+      }
+      <span class="menu-slot__name">${escapeHtml(recipe.name)}</span>
+    `;
+  }
+
+  function slotAccordionHtml(currentRecipe) {
+    return `
+      <div class="menu-slot__accordion-panel">
+        <div class="menu-slot__accordion-list">
+          ${allRecipes
+            .map((r) => {
+              const initial = (r.name || "?").trim().charAt(0).toUpperCase();
+              const selected = currentRecipe && currentRecipe.id === r.id;
+              return `
+                <button type="button" class="menu-slot__option ${selected ? "menu-slot__option--selected" : ""}" data-recipe-id="${r.id}">
+                  ${
+                    r.image_url
+                      ? `<img class="menu-slot__option-img" src="${escapeHtml(r.image_url)}" alt="${escapeHtml(r.name)}" />`
+                      : `<div class="menu-slot__option-img menu-slot__option-img--placeholder">${initial}</div>`
+                  }
+                  <span class="menu-slot__option-name">${escapeHtml(r.name)}</span>
+                </button>
+              `;
+            })
+            .join("")}
+        </div>
+        ${
+          currentRecipe
+            ? `<button type="button" class="menu-slot__clear">Kosongkan slot</button>`
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  function attachSlotHandlers() {
+    gridEl.querySelectorAll(".menu-slot").forEach((slotEl) => {
+      const index = Number(slotEl.dataset.index);
+
+      slotEl.querySelector(".menu-slot__trigger").addEventListener("click", () => {
+        openSlotIndex = openSlotIndex === index ? null : index;
+        renderGrid();
+      });
+
+      slotEl.querySelectorAll(".menu-slot__option").forEach((optionEl) => {
+        optionEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          progress.menuSlots[index] = optionEl.dataset.recipeId;
+          persist();
+          openSlotIndex = null;
+          renderGrid();
+        });
+      });
+
+      const clearBtn = slotEl.querySelector(".menu-slot__clear");
+      if (clearBtn) {
+        clearBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          progress.menuSlots[index] = null;
+          persist();
+          openSlotIndex = null;
+          renderGrid();
+        });
+      }
     });
   }
 
-  gridEl.querySelectorAll(".recipe-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const id = card.dataset.id;
-      const idx = progress.selectedRecipeIds.indexOf(id);
-      if (idx >= 0) {
-        progress.selectedRecipeIds.splice(idx, 1);
-      } else {
-        if (progress.selectedRecipeIds.length >= MAX_MENU) return;
-        progress.selectedRecipeIds.push(id);
-      }
-      persist();
-      updateSelectionUi();
-    });
-  });
+  function updateSelectionUi() {
+    const count = progress.menuSlots.filter(Boolean).length;
+    countEl.textContent = `${count}/${SLOT_COUNT} terisi`;
+    countEl.classList.toggle("badge-mono--ok", count >= MIN_FILLED);
+    nextBtn.disabled = count < MIN_FILLED;
+  }
 
-  updateSelectionUi();
+  renderGrid();
 
   nextBtn.addEventListener("click", async () => {
     nextBtn.disabled = true;
@@ -157,28 +236,11 @@ async function renderStep1() {
   });
 }
 
-function recipeCardHtml(recipe) {
-  const initial = (recipe.name || "?").trim().charAt(0).toUpperCase();
-  return `
-    <div class="recipe-card" data-id="${recipe.id}">
-      <div class="recipe-card__check">✓</div>
-      ${
-        recipe.image_url
-          ? `<img class="recipe-card__img" src="${escapeHtml(recipe.image_url)}" alt="${escapeHtml(recipe.name)}" />`
-          : `<div class="recipe-card__img recipe-card__img--placeholder">${initial}</div>`
-      }
-      <div class="recipe-card__body">
-        <h3 class="recipe-card__name">${escapeHtml(recipe.name)}</h3>
-        ${recipe.description ? `<p class="recipe-card__desc">${escapeHtml(recipe.description)}</p>` : ""}
-      </div>
-    </div>
-  `;
-}
-
 // Gabungkan bahan dari resep terpilih, dedupe pakai ingredient_id (bukan
 // pencocokan nama/string) sebagai kunci.
 async function proceedToReview() {
-  const rows = await fetchIngredientsForRecipes(progress.selectedRecipeIds);
+  const filledRecipeIds = [...new Set(progress.menuSlots.filter(Boolean))];
+  const rows = await fetchIngredientsForRecipes(filledRecipeIds);
 
   const merged = new Map(); // ingredient_id -> { id, name, category }
   for (const row of rows) {
@@ -397,7 +459,7 @@ function renderStep3() {
     clearCurrentProgress();
     progress = {
       step: 1,
-      selectedRecipeIds: [],
+      menuSlots: Array(SLOT_COUNT).fill(null),
       mergedIngredients: [],
       reviewStatuses: {},
       checklist: {},
