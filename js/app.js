@@ -377,7 +377,6 @@ function ingredientRowHtml(ing) {
     <div class="ingredient-row" data-id="${ing.id}">
       <div class="ingredient-row__info">
         <span class="ingredient-row__name">${escapeHtml(ing.name)}</span>
-        <span class="tag">${escapeHtml(ing.category || "Lainnya")}</span>
       </div>
       <div class="toggle">
         <button class="toggle-btn toggle-btn--ada ${status === "ada" ? "toggle-btn--active" : ""}" data-status="ada">Ada</button>

@@ -574,7 +574,7 @@ main {
 }
 
 .toggle-btn--active.toggle-btn--ada {
-  background: var(--success);
+  background: #5E6B53;
   color: #fff;
 }
 
