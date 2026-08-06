@@ -1,6 +1,6 @@
-# Grocery List Mingguan
+# Plantry — Grocery List Mingguan
 
-Aplikasi web sederhana **tanpa login** untuk membuat grocery list mingguan dari
+**Plantry** adalah aplikasi web sederhana **tanpa login** untuk membuat grocery list mingguan dari
 menu bank. Pilih 5–10 menu, review stok bahan berdasarkan riwayat minggu
 sebelumnya, lalu dapatkan daftar belanja final dengan checklist — semua dalam
 satu alur, satu halaman.
