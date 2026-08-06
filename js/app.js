@@ -14,6 +14,22 @@ import {
 const SLOT_COUNT = 15;
 const MIN_FILLED = 5;
 
+// Fallback gambar lokal (bundled di /images) untuk resep yang belum punya
+// image_url di Supabase. Tambahkan entri baru di sini kalau ada resep baru
+// dengan gambar lokal — kalau image_url sudah diisi di database, itu yang
+// dipakai duluan (lihat imageUrlFor()).
+const LOCAL_RECIPE_IMAGES = {
+  "nasi goreng": "./images/nasi-goreng.jpeg",
+  "ayam goreng lengkuas": "./images/ayam-goreng-lengkuas.jpeg",
+  "sup bening bayam": "./images/sayur-bayam-bening.jpeg",
+  "telur dadar": "./images/telur-dadar.jpeg",
+  "tumis kangkung": "./images/tumis-kangkung.jpeg",
+};
+
+function imageUrlFor(recipe) {
+  return recipe.image_url || LOCAL_RECIPE_IMAGES[(recipe.name || "").trim().toLowerCase()] || null;
+}
+
 const appEl = document.getElementById("app");
 const stepperEl = document.getElementById("stepper");
 
@@ -140,10 +156,11 @@ async function renderStep1() {
 
   function slotFilledBodyHtml(recipe) {
     const initial = (recipe.name || "?").trim().charAt(0).toUpperCase();
+    const imgUrl = imageUrlFor(recipe);
     return `
       ${
-        recipe.image_url
-          ? `<img class="menu-slot__img" src="${escapeHtml(recipe.image_url)}" alt="${escapeHtml(recipe.name)}" />`
+        imgUrl
+          ? `<img class="menu-slot__img" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(recipe.name)}" />`
           : `<div class="menu-slot__img menu-slot__img--placeholder">${initial}</div>`
       }
       <span class="menu-slot__name">${escapeHtml(recipe.name)}</span>
@@ -158,11 +175,12 @@ async function renderStep1() {
             .map((r) => {
               const initial = (r.name || "?").trim().charAt(0).toUpperCase();
               const selected = currentRecipe && currentRecipe.id === r.id;
+              const imgUrl = imageUrlFor(r);
               return `
                 <button type="button" class="menu-slot__option ${selected ? "menu-slot__option--selected" : ""}" data-recipe-id="${r.id}">
                   ${
-                    r.image_url
-                      ? `<img class="menu-slot__option-img" src="${escapeHtml(r.image_url)}" alt="${escapeHtml(r.name)}" />`
+                    imgUrl
+                      ? `<img class="menu-slot__option-img" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(r.name)}" />`
                       : `<div class="menu-slot__option-img menu-slot__option-img--placeholder">${initial}</div>`
                   }
                   <span class="menu-slot__option-name">${escapeHtml(r.name)}</span>
