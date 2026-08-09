@@ -711,6 +711,7 @@ async function handleAddRecipeSubmit() {
     allRecipes.sort((a, b) => a.name.localeCompare(b.name, "id"));
 
     const successMessage = `Resep "${s.createdRecipeObj.name}" berhasil ditambahkan ke menu bank.`;
+    s.submitting = false;
     closeAddRecipeModal();
     renderStep1({ successMessage });
   } catch (err) {
