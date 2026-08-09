@@ -1,10 +1,10 @@
 -- ============================================================================
--- Grocery List Mingguan — Skema Supabase (Menu Bank, read-only untuk aplikasi)
+-- Grocery List Mingguan — Skema Supabase (Menu Bank)
 -- ============================================================================
 -- Jalankan seluruh file ini di Supabase Dashboard > SQL Editor.
--- Tabel ini adalah "Menu Bank": resep + bahan. Aplikasi hanya membaca (SELECT).
--- Tidak ada fitur tambah/edit menu dari dalam aplikasi — isi data lewat SQL
--- Editor atau Table Editor di Supabase.
+-- Tabel ini adalah "Menu Bank": resep + bahan. Aplikasi bisa membaca (SELECT)
+-- dan menambah resep baru lewat fitur "Tambah Menu" (INSERT) — lihat RLS di
+-- bawah. Tidak ada fitur edit/hapus menu dari dalam aplikasi.
 -- ============================================================================
 
 -- 1. Tabel resep (menu bank)
@@ -36,9 +36,11 @@ create index if not exists idx_recipe_ingredients_recipe on recipe_ingredients(r
 create index if not exists idx_recipe_ingredients_ingredient on recipe_ingredients(ingredient_id);
 
 -- ============================================================================
--- Row Level Security — aplikasi jalan tanpa login (pakai anon key), jadi akses
--- dibuka untuk SELECT saja. Tidak ada policy insert/update/delete untuk anon,
--- sehingga menu bank otomatis read-only dari sisi aplikasi.
+-- Row Level Security — aplikasi jalan tanpa login (pakai anon key). SELECT
+-- dibuka untuk semua orang, dan INSERT juga dibuka publik (tanpa syarat
+-- tambahan) untuk mendukung fitur "Tambah Menu" dari dalam aplikasi. Ini
+-- keputusan sadar untuk app pribadi/keluarga tanpa auth — tidak ada policy
+-- update/delete untuk anon.
 -- ============================================================================
 
 alter table recipes enable row level security;
@@ -59,6 +61,24 @@ create policy "Public read access - recipe_ingredients"
   on recipe_ingredients for select
   to anon
   using (true);
+
+drop policy if exists "Public insert access - recipes" on recipes;
+create policy "Public insert access - recipes"
+  on recipes for insert
+  to anon
+  with check (true);
+
+drop policy if exists "Public insert access - ingredients" on ingredients;
+create policy "Public insert access - ingredients"
+  on ingredients for insert
+  to anon
+  with check (true);
+
+drop policy if exists "Public insert access - recipe_ingredients" on recipe_ingredients;
+create policy "Public insert access - recipe_ingredients"
+  on recipe_ingredients for insert
+  to anon
+  with check (true);
 
 -- ============================================================================
 -- Contoh data (opsional) — hapus atau sesuaikan sesuai kebutuhan menu bank kamu

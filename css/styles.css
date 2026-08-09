@@ -644,6 +644,290 @@ main {
 
 .status:empty { display: none; }
 
+/* ---------------------------------------------------------------------- */
+/* Panel toolbar (tombol "+ Tambah Menu Baru" di Step 1)                  */
+/* ---------------------------------------------------------------------- */
+
+.panel__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.btn--sm {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Modal "Tambah Menu Baru"                                               */
+/* ---------------------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal-panel {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 18px 4px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.modal-close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: none;
+  background: var(--slate-100);
+  color: var(--slate-600);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-close:hover { background: var(--slate-200); }
+
+.modal-body {
+  padding: 14px 18px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--slate-200);
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+}
+
+#modal-form-error:empty { display: none; }
+
+/* ---------------------------------------------------------------------- */
+/* Form fields                                                            */
+/* ---------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--slate-600);
+}
+
+.input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--text);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(94, 107, 83, 0.15);
+}
+
+textarea.input {
+  min-height: 70px;
+  resize: vertical;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Ingredient picker (search + autocomplete dropdown)                     */
+/* ---------------------------------------------------------------------- */
+
+.ingredient-picker {
+  position: relative;
+}
+
+.ingredient-picker__dropdown {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ingredient-picker__dropdown:empty { display: none; }
+
+.ingredient-picker__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--slate-200);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ingredient-picker__option:hover {
+  background: var(--slate-50);
+}
+
+.ingredient-picker__option--add-new {
+  color: var(--primary);
+  border-style: dashed;
+  border-color: var(--primary);
+}
+
+.new-ingredient-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1.5px dashed var(--primary);
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.new-ingredient-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Bahan terpilih (dalam form tambah menu)                                */
+/* ---------------------------------------------------------------------- */
+
+.selected-ingredient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.selected-ingredient-list__empty {
+  font-size: 0.82rem;
+  color: var(--slate-500);
+  margin: 0;
+}
+
+.selected-ingredient-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.selected-ingredient-row__name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-ingredient-row__remove {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1.5px solid var(--slate-200);
+  background: none;
+  color: var(--accent);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.selected-ingredient-row__remove:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--slate-500);
+  background: var(--slate-100);
+  border: 1px solid var(--slate-200);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.tag--new {
+  color: var(--success);
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-panel {
+    max-width: none;
+    max-height: 85vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}
+
 footer.app-footer {
   text-align: center;
   font-size: 0.75rem;

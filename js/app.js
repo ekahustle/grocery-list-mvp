@@ -1,6 +1,10 @@
 import {
   fetchRecipes,
   fetchIngredientsForRecipes,
+  fetchAllIngredients,
+  insertRecipe,
+  insertIngredient,
+  insertRecipeIngredients,
   isSupabaseConfigured,
 } from "./supabaseClient.js";
 import {
@@ -32,10 +36,13 @@ function imageUrlFor(recipe) {
 
 const appEl = document.getElementById("app");
 const stepperEl = document.getElementById("stepper");
+const modalRootEl = document.getElementById("modal-root");
 
 // State di memori. Sumber kebenaran untuk "progress minggu ini" tetap
 // disalin ke localStorage lewat saveCurrentProgress() supaya tahan refresh.
 let allRecipes = [];
+let allIngredients = []; // cache untuk autocomplete di form "Tambah Menu"
+let addRecipeState = null; // state form modal "Tambah Menu", null kalau modal tertutup
 let progress = getCurrentProgress() || {
   step: 1,
   menuSlots: Array(SLOT_COUNT).fill(null),
@@ -85,11 +92,14 @@ function renderStepper() {
 // ---------------------------------------------------------------------------
 // Step 1 — Pilih Menu Mingguan (grid)
 // ---------------------------------------------------------------------------
-async function renderStep1() {
+async function renderStep1(options = {}) {
   appEl.innerHTML = `
     <section class="panel">
       <h1 class="panel__title">Pilih Menu Minggu Ini</h1>
       <p class="panel__desc">Isi minimal 5 dari 15 slot menu. Klik sebuah slot untuk memilih resep dari menu bank — resep yang sama boleh dipakai di beberapa slot. Bahan-bahannya nanti otomatis digabung tanpa duplikasi.</p>
+      <div class="panel__toolbar">
+        <button type="button" id="btn-add-recipe" class="btn btn--ghost btn--sm">+ Tambah Menu Baru</button>
+      </div>
       <div id="recipe-status" class="status"></div>
       <div id="menu-slot-grid" class="menu-slot-grid"></div>
       <div class="panel__footer">
@@ -103,6 +113,15 @@ async function renderStep1() {
   const gridEl = document.getElementById("menu-slot-grid");
   const countEl = document.getElementById("selection-count");
   const nextBtn = document.getElementById("btn-next");
+  const addRecipeBtn = document.getElementById("btn-add-recipe");
+
+  addRecipeBtn.addEventListener("click", () => {
+    if (!isSupabaseConfigured) {
+      statusEl.innerHTML = `<div class="alert alert--warning">Supabase belum dikonfigurasi. Isi <code>js/config.js</code> dengan URL dan anon key project Supabase kamu, lalu muat ulang halaman.</div>`;
+      return;
+    }
+    openAddRecipeModal();
+  });
 
   if (!isSupabaseConfigured) {
     statusEl.innerHTML = `<div class="alert alert--warning">Supabase belum dikonfigurasi. Isi <code>js/config.js</code> dengan URL dan anon key project Supabase kamu, lalu muat ulang halaman.</div>`;
@@ -115,7 +134,9 @@ async function renderStep1() {
     if (allRecipes.length === 0) {
       allRecipes = await fetchRecipes();
     }
-    statusEl.innerHTML = "";
+    statusEl.innerHTML = options.successMessage
+      ? `<div class="alert alert--success">${escapeHtml(options.successMessage)}</div>`
+      : "";
   } catch (err) {
     statusEl.innerHTML = `<div class="alert alert--error">Gagal memuat menu: ${escapeHtml(
       err.message || String(err)
@@ -283,6 +304,423 @@ async function proceedToReview() {
   progress.reviewStatuses = defaults;
   progress.checklist = {};
   setStep(2);
+}
+
+// ---------------------------------------------------------------------------
+// Modal "Tambah Menu Baru" — dipicu dari Step 1, tidak mengubah progress.step
+// ---------------------------------------------------------------------------
+function handleModalKeydown(e) {
+  if (e.key === "Escape") closeAddRecipeModal();
+}
+
+async function openAddRecipeModal() {
+  addRecipeState = {
+    name: "",
+    description: "",
+    imageUrl: "",
+    selectedIngredients: [], // { id, tempId, name, category, isNew }
+    searchQuery: "",
+    newIngredientDraft: null, // { name, category, useCustomCategory, customCategory }
+    createdRecipeId: null,
+    createdRecipeObj: null,
+    submitting: false,
+    loadingIngredients: allIngredients.length === 0,
+  };
+
+  renderAddRecipeModal();
+  document.addEventListener("keydown", handleModalKeydown);
+
+  if (allIngredients.length === 0) {
+    try {
+      allIngredients = await fetchAllIngredients();
+    } catch (err) {
+      // Biarkan modal tetap terbuka -- pencarian bahan existing akan kosong,
+      // tapi menambah bahan baru & submit tetap bisa dicoba (error yang
+      // sebenarnya, kalau ada, akan muncul lagi saat submit).
+      allIngredients = [];
+    }
+    if (!addRecipeState) return; // modal sudah ditutup selagi fetch berjalan
+    addRecipeState.loadingIngredients = false;
+    const searchInput = document.getElementById("modal-ingredient-search");
+    if (searchInput) {
+      searchInput.disabled = false;
+      searchInput.placeholder = "Cari atau tambah bahan…";
+    }
+    renderModalAutocomplete();
+  }
+}
+
+function closeAddRecipeModal() {
+  if (addRecipeState && addRecipeState.submitting) return;
+  modalRootEl.innerHTML = "";
+  document.removeEventListener("keydown", handleModalKeydown);
+  addRecipeState = null;
+}
+
+function renderAddRecipeModal() {
+  const s = addRecipeState;
+  modalRootEl.innerHTML = `
+    <div class="modal-backdrop" id="modal-backdrop">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="modal-title">Tambah Menu Baru</h2>
+          <button type="button" class="modal-close" id="modal-close" aria-label="Tutup">×</button>
+        </div>
+        <form id="add-recipe-form" novalidate>
+          <div class="modal-body">
+            <div id="modal-form-error"></div>
+            <div class="field">
+              <label class="field__label" for="modal-name">Nama Resep *</label>
+              <input type="text" id="modal-name" class="input" placeholder="Contoh: Nasi Goreng" value="${escapeHtml(s.name)}" />
+            </div>
+            <div class="field">
+              <label class="field__label" for="modal-description">Deskripsi</label>
+              <textarea id="modal-description" class="input" placeholder="Opsional">${escapeHtml(s.description)}</textarea>
+            </div>
+            <div class="field">
+              <label class="field__label" for="modal-image-url">URL Gambar</label>
+              <input type="url" id="modal-image-url" class="input" placeholder="https://... (opsional)" value="${escapeHtml(s.imageUrl)}" />
+            </div>
+            <div class="field">
+              <label class="field__label" for="modal-ingredient-search">Bahan-Bahan *</label>
+              <div class="ingredient-picker">
+                <input
+                  type="text"
+                  id="modal-ingredient-search"
+                  class="input"
+                  placeholder="${s.loadingIngredients ? "Memuat daftar bahan…" : "Cari atau tambah bahan…"}"
+                  autocomplete="off"
+                  value="${escapeHtml(s.searchQuery)}"
+                  ${s.loadingIngredients ? "disabled" : ""}
+                />
+                <div class="ingredient-picker__dropdown" id="modal-autocomplete-results"></div>
+              </div>
+              <div class="selected-ingredient-list" id="modal-ingredient-list"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn--ghost" id="modal-cancel">Batal</button>
+            <button type="submit" class="btn btn--primary" id="modal-submit">Simpan Menu</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  renderModalIngredientList();
+  renderModalAutocomplete();
+  attachAddRecipeModalHandlers();
+
+  const nameInput = document.getElementById("modal-name");
+  if (nameInput) nameInput.focus();
+}
+
+function attachAddRecipeModalHandlers() {
+  document.getElementById("modal-name").addEventListener("input", (e) => {
+    addRecipeState.name = e.target.value;
+  });
+  document.getElementById("modal-description").addEventListener("input", (e) => {
+    addRecipeState.description = e.target.value;
+  });
+  document.getElementById("modal-image-url").addEventListener("input", (e) => {
+    addRecipeState.imageUrl = e.target.value;
+  });
+  document.getElementById("modal-ingredient-search").addEventListener("input", (e) => {
+    addRecipeState.searchQuery = e.target.value;
+    addRecipeState.newIngredientDraft = null;
+    renderModalAutocomplete();
+  });
+
+  document.getElementById("modal-close").addEventListener("click", closeAddRecipeModal);
+  document.getElementById("modal-cancel").addEventListener("click", closeAddRecipeModal);
+  document.getElementById("modal-backdrop").addEventListener("click", (e) => {
+    if (e.target.id === "modal-backdrop") closeAddRecipeModal();
+  });
+
+  // Cegah Enter di field manapun (search bahan, sub-form bahan baru, dst)
+  // ikut men-submit form utama secara tidak sengaja -- submit hanya lewat
+  // klik tombol "Simpan Menu".
+  document.getElementById("add-recipe-form").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    if (e.target.tagName === "TEXTAREA" || e.target.id === "modal-submit") return;
+    e.preventDefault();
+  });
+
+  document.getElementById("add-recipe-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    handleAddRecipeSubmit();
+  });
+}
+
+function deriveIngredientCategories() {
+  const categories = new Set();
+  for (const ing of allIngredients) {
+    if (ing.category) categories.add(ing.category);
+  }
+  return Array.from(categories).sort((a, b) => a.localeCompare(b, "id"));
+}
+
+function renderModalIngredientList() {
+  const listEl = document.getElementById("modal-ingredient-list");
+  if (!listEl) return;
+
+  if (addRecipeState.selectedIngredients.length === 0) {
+    listEl.innerHTML = `<p class="selected-ingredient-list__empty">Belum ada bahan ditambahkan.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = addRecipeState.selectedIngredients
+    .map(
+      (ing) => `
+      <div class="selected-ingredient-row">
+        <span class="selected-ingredient-row__name">${escapeHtml(ing.name)}</span>
+        ${ing.category ? `<span class="tag">${escapeHtml(ing.category)}</span>` : ""}
+        ${ing.isNew ? `<span class="tag tag--new">baru</span>` : ""}
+        <button type="button" class="selected-ingredient-row__remove" data-temp-id="${escapeHtml(ing.tempId)}" aria-label="Hapus bahan">×</button>
+      </div>`
+    )
+    .join("");
+
+  listEl.querySelectorAll(".selected-ingredient-row__remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tempId = btn.dataset.tempId;
+      addRecipeState.selectedIngredients = addRecipeState.selectedIngredients.filter(
+        (ing) => ing.tempId !== tempId
+      );
+      renderModalIngredientList();
+      renderModalAutocomplete();
+    });
+  });
+}
+
+function renderModalAutocomplete() {
+  const dropdownEl = document.getElementById("modal-autocomplete-results");
+  if (!dropdownEl) return;
+
+  if (addRecipeState.newIngredientDraft) {
+    dropdownEl.innerHTML = newIngredientFormHtml(addRecipeState.newIngredientDraft);
+    attachNewIngredientFormHandlers();
+    return;
+  }
+
+  const query = addRecipeState.searchQuery.trim();
+  if (!query) {
+    dropdownEl.innerHTML = "";
+    return;
+  }
+
+  const selectedIds = new Set(
+    addRecipeState.selectedIngredients.filter((ing) => ing.id).map((ing) => ing.id)
+  );
+  const lowerQuery = query.toLowerCase();
+  const matches = allIngredients
+    .filter((ing) => !selectedIds.has(ing.id) && ing.name.toLowerCase().includes(lowerQuery))
+    .slice(0, 8);
+  const exactMatch = allIngredients.some((ing) => ing.name.toLowerCase() === lowerQuery);
+
+  const optionsHtml = matches
+    .map(
+      (ing) => `
+      <button type="button" class="ingredient-picker__option" data-ingredient-id="${ing.id}">
+        <span>${escapeHtml(ing.name)}</span>
+        ${ing.category ? `<span class="tag">${escapeHtml(ing.category)}</span>` : ""}
+      </button>`
+    )
+    .join("");
+
+  const addNewHtml = exactMatch
+    ? ""
+    : `<button type="button" class="ingredient-picker__option ingredient-picker__option--add-new" id="modal-add-new-ingredient">
+        + Tambah bahan baru: "${escapeHtml(query)}"
+      </button>`;
+
+  dropdownEl.innerHTML = optionsHtml + addNewHtml;
+
+  dropdownEl.querySelectorAll(".ingredient-picker__option[data-ingredient-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ing = allIngredients.find((i) => String(i.id) === String(btn.dataset.ingredientId));
+      if (!ing) return;
+      addRecipeState.selectedIngredients.push({
+        id: ing.id,
+        tempId: String(ing.id),
+        name: ing.name,
+        category: ing.category || "",
+        isNew: false,
+      });
+      addRecipeState.searchQuery = "";
+      const searchInput = document.getElementById("modal-ingredient-search");
+      if (searchInput) searchInput.value = "";
+      renderModalIngredientList();
+      renderModalAutocomplete();
+    });
+  });
+
+  const addNewBtn = document.getElementById("modal-add-new-ingredient");
+  if (addNewBtn) {
+    addNewBtn.addEventListener("click", () => {
+      addRecipeState.newIngredientDraft = {
+        name: query,
+        category: "",
+        useCustomCategory: false,
+        customCategory: "",
+      };
+      renderModalAutocomplete();
+    });
+  }
+}
+
+function newIngredientFormHtml(draft) {
+  const categories = deriveIngredientCategories();
+  return `
+    <div class="new-ingredient-form">
+      <div class="field">
+        <label class="field__label" for="modal-new-ing-name">Nama Bahan Baru</label>
+        <input type="text" id="modal-new-ing-name" class="input" value="${escapeHtml(draft.name)}" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="modal-new-ing-category">Kategori</label>
+        <select id="modal-new-ing-category" class="input">
+          <option value="">— Pilih kategori —</option>
+          ${categories
+            .map(
+              (c) =>
+                `<option value="${escapeHtml(c)}" ${draft.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`
+            )
+            .join("")}
+          <option value="__custom__" ${draft.useCustomCategory ? "selected" : ""}>Lainnya (isi manual)</option>
+        </select>
+      </div>
+      ${
+        draft.useCustomCategory
+          ? `<div class="field">
+              <label class="field__label" for="modal-new-ing-custom-category">Kategori Baru</label>
+              <input type="text" id="modal-new-ing-custom-category" class="input" placeholder="Contoh: Camilan" value="${escapeHtml(draft.customCategory)}" />
+            </div>`
+          : ""
+      }
+      <div class="new-ingredient-form__actions">
+        <button type="button" class="btn btn--ghost btn--sm" id="modal-new-ing-cancel">Batal</button>
+        <button type="button" class="btn btn--primary btn--sm" id="modal-new-ing-confirm">Tambah Bahan</button>
+      </div>
+    </div>
+  `;
+}
+
+function attachNewIngredientFormHandlers() {
+  const nameInput = document.getElementById("modal-new-ing-name");
+  const categorySelect = document.getElementById("modal-new-ing-category");
+  const customCategoryInput = document.getElementById("modal-new-ing-custom-category");
+  const cancelBtn = document.getElementById("modal-new-ing-cancel");
+  const confirmBtn = document.getElementById("modal-new-ing-confirm");
+
+  if (nameInput) {
+    nameInput.addEventListener("input", (e) => {
+      addRecipeState.newIngredientDraft.name = e.target.value;
+    });
+  }
+  if (categorySelect) {
+    categorySelect.addEventListener("change", (e) => {
+      const value = e.target.value;
+      addRecipeState.newIngredientDraft.useCustomCategory = value === "__custom__";
+      addRecipeState.newIngredientDraft.category = value === "__custom__" ? "" : value;
+      renderModalAutocomplete();
+    });
+  }
+  if (customCategoryInput) {
+    customCategoryInput.addEventListener("input", (e) => {
+      addRecipeState.newIngredientDraft.customCategory = e.target.value;
+    });
+  }
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      addRecipeState.newIngredientDraft = null;
+      renderModalAutocomplete();
+    });
+  }
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", () => {
+      const draft = addRecipeState.newIngredientDraft;
+      const name = draft.name.trim();
+      if (!name) return;
+      const category = (draft.useCustomCategory ? draft.customCategory : draft.category).trim();
+      addRecipeState.selectedIngredients.push({
+        id: null,
+        tempId: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name,
+        category,
+        isNew: true,
+      });
+      addRecipeState.newIngredientDraft = null;
+      addRecipeState.searchQuery = "";
+      const searchInput = document.getElementById("modal-ingredient-search");
+      if (searchInput) searchInput.value = "";
+      renderModalIngredientList();
+      renderModalAutocomplete();
+    });
+  }
+}
+
+async function handleAddRecipeSubmit() {
+  const s = addRecipeState;
+  const errorEl = document.getElementById("modal-form-error");
+  const submitBtn = document.getElementById("modal-submit");
+
+  const name = s.name.trim();
+  if (!name) {
+    errorEl.innerHTML = `<div class="alert alert--error">Nama resep wajib diisi.</div>`;
+    const nameInput = document.getElementById("modal-name");
+    if (nameInput) nameInput.focus();
+    return;
+  }
+  if (s.selectedIngredients.length === 0) {
+    errorEl.innerHTML = `<div class="alert alert--error">Tambahkan minimal 1 bahan untuk resep ini.</div>`;
+    return;
+  }
+
+  errorEl.innerHTML = "";
+  s.submitting = true;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Menyimpan…";
+
+  try {
+    if (!s.createdRecipeId) {
+      const recipe = await insertRecipe({
+        name,
+        description: s.description.trim() || null,
+        image_url: s.imageUrl.trim() || null,
+      });
+      s.createdRecipeId = recipe.id;
+      s.createdRecipeObj = recipe;
+    }
+
+    const resolvedIds = [];
+    for (const ing of s.selectedIngredients) {
+      if (!ing.id) {
+        const created = await insertIngredient({ name: ing.name, category: ing.category || null });
+        ing.id = created.id;
+        if (!allIngredients.some((i) => i.id === created.id)) {
+          allIngredients.push(created);
+        }
+      }
+      resolvedIds.push(ing.id);
+    }
+
+    await insertRecipeIngredients(s.createdRecipeId, resolvedIds);
+
+    allRecipes.push(s.createdRecipeObj);
+    allRecipes.sort((a, b) => a.name.localeCompare(b.name, "id"));
+
+    const successMessage = `Resep "${s.createdRecipeObj.name}" berhasil ditambahkan ke menu bank.`;
+    closeAddRecipeModal();
+    renderStep1({ successMessage });
+  } catch (err) {
+    s.submitting = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Simpan Menu";
+    errorEl.innerHTML = `<div class="alert alert--error">Gagal menyimpan menu: ${escapeHtml(
+      err.message || String(err)
+    )}. Data yang sudah diisi tetap tersimpan -- klik Simpan lagi untuk mencoba ulang.</div>`;
+  }
 }
 
 // ---------------------------------------------------------------------------
