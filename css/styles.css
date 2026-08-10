@@ -25,6 +25,7 @@
   --radius-lg: 20px;
   --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --bottom-nav-height: 64px;
 }
 
 * { box-sizing: border-box; }
@@ -35,6 +36,7 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 .dotted-bg {
@@ -140,10 +142,16 @@ body {
   min-width: 12px;
 }
 
+@media (max-width: 380px) {
+  .step__label {
+    display: none;
+  }
+}
+
 main {
   max-width: 720px;
   margin: 0 auto;
-  padding: 20px 16px calc(88px + env(safe-area-inset-bottom, 0px));
+  padding: 20px 16px calc(var(--bottom-nav-height) + 24px + env(safe-area-inset-bottom, 0px));
 }
 
 .panel__title {
@@ -269,12 +277,12 @@ main {
   justify-content: space-between;
   gap: 10px;
   position: sticky;
-  bottom: 0;
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
   background: #ffffff;
   border-top: 1px solid var(--slate-200);
   box-shadow: 0 -4px 12px -4px rgb(15 23 42 / 0.08);
   margin: 24px -16px 0;
-  padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 16px;
 }
 
 .panel__footer .btn {
@@ -744,7 +752,7 @@ main {
 .input {
   width: 100%;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 16px; /* >=16px supaya iOS Safari tidak auto-zoom saat input ini fokus */
   padding: 10px 12px;
   border: 1.5px solid var(--slate-200);
   border-radius: var(--radius);
