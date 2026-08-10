@@ -217,11 +217,6 @@ main {
   justify-content: flex-start;
 }
 
-.menu-slot--open .menu-slot__trigger {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(94, 107, 83, 0.15);
-}
-
 .menu-slot__index {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.68rem;
@@ -266,98 +261,6 @@ main {
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 1.25;
-}
-
-.menu-slot__accordion-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  z-index: 20;
-  background: #fff;
-  border: 1.5px solid var(--slate-200);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-md);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.menu-slot__accordion-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.menu-slot__option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  width: 100%;
-}
-
-.menu-slot__option:hover {
-  background: var(--slate-50);
-}
-
-.menu-slot__option--selected {
-  border-color: var(--primary);
-  background: #ECF0E6;
-}
-
-.menu-slot__option-img {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  object-fit: cover;
-  flex: 0 0 auto;
-  background: var(--slate-100);
-}
-
-.menu-slot__option-img--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 800;
-  color: #fff;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-}
-
-.menu-slot__option-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.menu-slot__clear {
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--accent);
-  background: none;
-  border: 1.5px solid var(--slate-200);
-  border-radius: 999px;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.menu-slot__clear:hover {
-  background: #fef2f2;
-  border-color: #fecaca;
 }
 
 .panel__footer {
@@ -740,6 +643,87 @@ main {
 }
 
 #modal-form-error:empty { display: none; }
+
+/* ---------------------------------------------------------------------- */
+/* Modal "Pilih Resep" (recipe picker)                                    */
+/* ---------------------------------------------------------------------- */
+
+.recipe-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.recipe-picker__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+
+.recipe-picker__option:hover {
+  background: var(--slate-50);
+}
+
+.recipe-picker__option--selected {
+  border-color: var(--primary);
+  background: #ECF0E6;
+}
+
+.recipe-picker__option-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  background: var(--slate-100);
+}
+
+.recipe-picker__option-img--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+}
+
+.recipe-picker__option-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-picker__clear {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: none;
+  border: 1.5px solid var(--slate-200);
+  border-radius: 999px;
+  padding: 6px 10px;
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.recipe-picker__clear:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
 
 /* ---------------------------------------------------------------------- */
 /* Form fields                                                            */

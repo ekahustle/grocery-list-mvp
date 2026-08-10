@@ -43,6 +43,7 @@ const modalRootEl = document.getElementById("modal-root");
 let allRecipes = [];
 let allIngredients = []; // cache untuk autocomplete di form "Tambah Menu"
 let addRecipeState = null; // state form modal "Tambah Menu", null kalau modal tertutup
+let recipePickerState = null; // { slotIndex, searchQuery }, null kalau modal picker tertutup
 let progress = getCurrentProgress() || {
   step: 1,
   menuSlots: Array(SLOT_COUNT).fill(null),
@@ -149,8 +150,6 @@ async function renderStep1(options = {}) {
     return;
   }
 
-  let openSlotIndex = null;
-
   function renderGrid() {
     gridEl.innerHTML = Array.from({ length: SLOT_COUNT }, (_, i) => slotHtml(i)).join("");
     attachSlotHandlers();
@@ -160,9 +159,8 @@ async function renderStep1(options = {}) {
   function slotHtml(index) {
     const recipeId = progress.menuSlots[index];
     const recipe = recipeId ? allRecipes.find((r) => String(r.id) === String(recipeId)) : null;
-    const isOpen = openSlotIndex === index;
     return `
-      <div class="menu-slot ${recipe ? "menu-slot--filled" : ""} ${isOpen ? "menu-slot--open" : ""}" data-index="${index}">
+      <div class="menu-slot ${recipe ? "menu-slot--filled" : ""}" data-index="${index}">
         <button type="button" class="menu-slot__trigger">
           ${
             recipe
@@ -170,7 +168,6 @@ async function renderStep1(options = {}) {
               : `<span class="menu-slot__index">${index + 1}</span><span class="menu-slot__placeholder">+ Pilih menu</span>`
           }
         </button>
-        ${isOpen ? slotAccordionHtml(recipe) : ""}
       </div>
     `;
   }
@@ -188,66 +185,13 @@ async function renderStep1(options = {}) {
     `;
   }
 
-  function slotAccordionHtml(currentRecipe) {
-    return `
-      <div class="menu-slot__accordion-panel">
-        <div class="menu-slot__accordion-list">
-          ${allRecipes
-            .map((r) => {
-              const initial = (r.name || "?").trim().charAt(0).toUpperCase();
-              const selected = currentRecipe && currentRecipe.id === r.id;
-              const imgUrl = imageUrlFor(r);
-              return `
-                <button type="button" class="menu-slot__option ${selected ? "menu-slot__option--selected" : ""}" data-recipe-id="${r.id}">
-                  ${
-                    imgUrl
-                      ? `<img class="menu-slot__option-img" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(r.name)}" />`
-                      : `<div class="menu-slot__option-img menu-slot__option-img--placeholder">${initial}</div>`
-                  }
-                  <span class="menu-slot__option-name">${escapeHtml(r.name)}</span>
-                </button>
-              `;
-            })
-            .join("")}
-        </div>
-        ${
-          currentRecipe
-            ? `<button type="button" class="menu-slot__clear">Kosongkan slot</button>`
-            : ""
-        }
-      </div>
-    `;
-  }
-
   function attachSlotHandlers() {
     gridEl.querySelectorAll(".menu-slot").forEach((slotEl) => {
       const index = Number(slotEl.dataset.index);
 
       slotEl.querySelector(".menu-slot__trigger").addEventListener("click", () => {
-        openSlotIndex = openSlotIndex === index ? null : index;
-        renderGrid();
+        openRecipePickerModal(index);
       });
-
-      slotEl.querySelectorAll(".menu-slot__option").forEach((optionEl) => {
-        optionEl.addEventListener("click", (e) => {
-          e.stopPropagation();
-          progress.menuSlots[index] = optionEl.dataset.recipeId;
-          persist();
-          openSlotIndex = null;
-          renderGrid();
-        });
-      });
-
-      const clearBtn = slotEl.querySelector(".menu-slot__clear");
-      if (clearBtn) {
-        clearBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          progress.menuSlots[index] = null;
-          persist();
-          openSlotIndex = null;
-          renderGrid();
-        });
-      }
     });
   }
 
@@ -722,6 +666,132 @@ async function handleAddRecipeSubmit() {
       err.message || String(err)
     )}. Data yang sudah diisi tetap tersimpan -- klik Simpan lagi untuk mencoba ulang.</div>`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Modal "Pilih Resep" — dipicu dari klik slot di Step 1, tidak mengubah
+// progress.step. Menggantikan dropdown/accordion inline yang lama supaya
+// daftar resep tidak terpotong di layar sempit.
+// ---------------------------------------------------------------------------
+function handleRecipePickerKeydown(e) {
+  if (e.key === "Escape") closeRecipePickerModal();
+}
+
+function openRecipePickerModal(slotIndex) {
+  recipePickerState = { slotIndex, searchQuery: "" };
+  renderRecipePickerModal();
+  document.addEventListener("keydown", handleRecipePickerKeydown);
+}
+
+function closeRecipePickerModal() {
+  modalRootEl.innerHTML = "";
+  document.removeEventListener("keydown", handleRecipePickerKeydown);
+  recipePickerState = null;
+}
+
+function renderRecipePickerModal() {
+  const s = recipePickerState;
+  const currentRecipeId = progress.menuSlots[s.slotIndex];
+  modalRootEl.innerHTML = `
+    <div class="modal-backdrop" id="recipe-picker-backdrop">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="recipe-picker-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="recipe-picker-title">Pilih Resep — Slot ${s.slotIndex + 1}</h2>
+          <button type="button" class="modal-close" id="recipe-picker-close" aria-label="Tutup">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <input
+              type="text"
+              id="recipe-picker-search"
+              class="input"
+              placeholder="Cari resep…"
+              autocomplete="off"
+              value="${escapeHtml(s.searchQuery)}"
+            />
+          </div>
+          <div class="recipe-picker__list" id="recipe-picker-list"></div>
+        </div>
+        <div class="modal-footer">
+          ${
+            currentRecipeId
+              ? `<button type="button" class="recipe-picker__clear" id="recipe-picker-clear">Kosongkan slot</button>`
+              : ""
+          }
+          <button type="button" class="btn btn--ghost" id="recipe-picker-cancel">Tutup</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  renderRecipePickerList();
+
+  document.getElementById("recipe-picker-close").addEventListener("click", closeRecipePickerModal);
+  document.getElementById("recipe-picker-cancel").addEventListener("click", closeRecipePickerModal);
+  document.getElementById("recipe-picker-backdrop").addEventListener("click", (e) => {
+    if (e.target.id === "recipe-picker-backdrop") closeRecipePickerModal();
+  });
+
+  const clearBtn = document.getElementById("recipe-picker-clear");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      progress.menuSlots[s.slotIndex] = null;
+      persist();
+      closeRecipePickerModal();
+      renderStep1();
+    });
+  }
+
+  const searchInput = document.getElementById("recipe-picker-search");
+  searchInput.addEventListener("input", (e) => {
+    recipePickerState.searchQuery = e.target.value;
+    renderRecipePickerList();
+  });
+  searchInput.focus();
+}
+
+function renderRecipePickerList() {
+  const listEl = document.getElementById("recipe-picker-list");
+  if (!listEl) return;
+
+  const s = recipePickerState;
+  const currentRecipeId = progress.menuSlots[s.slotIndex];
+  const query = s.searchQuery.trim().toLowerCase();
+  const matches = query
+    ? allRecipes.filter((r) => (r.name || "").toLowerCase().includes(query))
+    : allRecipes;
+
+  if (matches.length === 0) {
+    listEl.innerHTML = `<p class="selected-ingredient-list__empty">Tidak ada resep yang cocok.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = matches
+    .map((r) => {
+      const initial = (r.name || "?").trim().charAt(0).toUpperCase();
+      const selected = currentRecipeId && String(currentRecipeId) === String(r.id);
+      const imgUrl = imageUrlFor(r);
+      return `
+        <button type="button" class="recipe-picker__option ${selected ? "recipe-picker__option--selected" : ""}" data-recipe-id="${r.id}">
+          ${
+            imgUrl
+              ? `<img class="recipe-picker__option-img" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(r.name)}" />`
+              : `<div class="recipe-picker__option-img recipe-picker__option-img--placeholder">${initial}</div>`
+          }
+          <span class="recipe-picker__option-name">${escapeHtml(r.name)}</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  listEl.querySelectorAll(".recipe-picker__option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      progress.menuSlots[s.slotIndex] = btn.dataset.recipeId;
+      persist();
+      closeRecipePickerModal();
+      renderStep1();
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
