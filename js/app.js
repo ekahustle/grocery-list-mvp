@@ -44,6 +44,7 @@ let allRecipes = [];
 let allIngredients = []; // cache untuk autocomplete di form "Tambah Menu"
 let addRecipeState = null; // state form modal "Tambah Menu", null kalau modal tertutup
 let recipePickerState = null; // { slotIndex, searchQuery }, null kalau modal picker tertutup
+let recipeDetailState = null; // { recipe, ingredients, loading }, null kalau modal detail tertutup
 let progress = getCurrentProgress() || {
   step: 1,
   menuSlots: Array(SLOT_COUNT).fill(null),
@@ -52,6 +53,13 @@ let progress = getCurrentProgress() || {
   checklist: {},
 };
 
+// Halaman aktif -- terpisah dari `progress` supaya tidak ikut tersimpan
+// permanen. App selalu mendarat di Home tiap dibuka/di-refresh; progress
+// "This Week" (step, menuSlots, dst) tetap tersimpan seperti biasa.
+let currentPage = "home"; // "home" | "week"
+const HOME_PAGE_SIZE = 9;
+let homeVisibleCount = HOME_PAGE_SIZE;
+
 function persist() {
   saveCurrentProgress(progress);
 }
@@ -59,6 +67,12 @@ function persist() {
 function setStep(step) {
   progress.step = step;
   persist();
+  render();
+}
+
+function setPage(page) {
+  currentPage = page;
+  if (page === "home") homeVisibleCount = HOME_PAGE_SIZE;
   render();
 }
 
@@ -91,29 +105,25 @@ function renderStepper() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Pilih Menu Mingguan (grid)
+// Home — Menu Bank
 // ---------------------------------------------------------------------------
-async function renderStep1(options = {}) {
+async function renderHome(options = {}) {
   appEl.innerHTML = `
     <section class="panel">
-      <h1 class="panel__title">Pilih Menu Minggu Ini</h1>
-      <p class="panel__desc">Isi minimal 5 dari 15 slot menu. Klik sebuah slot untuk memilih resep dari menu bank — resep yang sama boleh dipakai di beberapa slot. Bahan-bahannya nanti otomatis digabung tanpa duplikasi.</p>
+      <h1 class="panel__title">Menu Bank</h1>
+      <p class="panel__desc">Semua resep yang tersedia untuk dipakai di menu mingguan. Klik sebuah resep untuk lihat detailnya.</p>
       <div class="panel__toolbar">
         <button type="button" id="btn-add-recipe" class="btn btn--ghost btn--sm">+ Tambah Menu Baru</button>
       </div>
       <div id="recipe-status" class="status"></div>
-      <div id="menu-slot-grid" class="menu-slot-grid"></div>
-      <div class="panel__footer">
-        <span id="selection-count" class="badge-mono">0/${SLOT_COUNT} terisi</span>
-        <button id="btn-next" class="btn btn--primary" disabled>Lanjut ke Review Stok →</button>
-      </div>
+      <div id="recipe-bank-grid" class="recipe-bank-grid"></div>
+      <div id="recipe-bank-more"></div>
     </section>
   `;
 
   const statusEl = document.getElementById("recipe-status");
-  const gridEl = document.getElementById("menu-slot-grid");
-  const countEl = document.getElementById("selection-count");
-  const nextBtn = document.getElementById("btn-next");
+  const gridEl = document.getElementById("recipe-bank-grid");
+  const moreEl = document.getElementById("recipe-bank-more");
   const addRecipeBtn = document.getElementById("btn-add-recipe");
 
   addRecipeBtn.addEventListener("click", () => {
@@ -132,9 +142,97 @@ async function renderStep1(options = {}) {
   statusEl.innerHTML = `<div class="alert alert--info">Memuat menu bank…</div>`;
 
   try {
-    if (allRecipes.length === 0) {
-      allRecipes = await fetchRecipes();
+    await ensureRecipesLoaded();
+    statusEl.innerHTML = options.successMessage
+      ? `<div class="alert alert--success">${escapeHtml(options.successMessage)}</div>`
+      : "";
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert--error">Gagal memuat menu: ${escapeHtml(
+      err.message || String(err)
+    )}</div>`;
+    return;
+  }
+
+  if (allRecipes.length === 0) {
+    statusEl.innerHTML = `<div class="alert alert--warning">Menu bank masih kosong. Klik "+ Tambah Menu Baru" untuk menambah resep pertama.</div>`;
+    return;
+  }
+
+  function renderRecipeBankGrid() {
+    gridEl.innerHTML = allRecipes.slice(0, homeVisibleCount).map(recipeCardHtml).join("");
+
+    gridEl.querySelectorAll(".recipe-card").forEach((cardEl) => {
+      cardEl.addEventListener("click", () => {
+        openRecipeDetailModal(cardEl.dataset.recipeId);
+      });
+    });
+
+    if (allRecipes.length > homeVisibleCount) {
+      moreEl.innerHTML = `<div class="recipe-bank-more"><button type="button" id="btn-show-more" class="btn btn--ghost btn--sm">Tampilkan lebih banyak</button></div>`;
+      document.getElementById("btn-show-more").addEventListener("click", () => {
+        homeVisibleCount += HOME_PAGE_SIZE;
+        renderRecipeBankGrid();
+      });
+    } else {
+      moreEl.innerHTML = "";
     }
+  }
+
+  renderRecipeBankGrid();
+}
+
+function recipeCardHtml(recipe) {
+  const initial = (recipe.name || "?").trim().charAt(0).toUpperCase();
+  const imgUrl = imageUrlFor(recipe);
+  return `
+    <button type="button" class="recipe-card" data-recipe-id="${recipe.id}">
+      ${
+        imgUrl
+          ? `<img class="recipe-card__img" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(recipe.name)}" />`
+          : `<div class="recipe-card__img recipe-card__img--placeholder">${initial}</div>`
+      }
+      <span class="recipe-card__name">${escapeHtml(recipe.name)}</span>
+    </button>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Step 1 — Pilih Menu Mingguan (grid)
+// ---------------------------------------------------------------------------
+async function ensureRecipesLoaded() {
+  if (allRecipes.length === 0) {
+    allRecipes = await fetchRecipes();
+  }
+}
+
+async function renderStep1(options = {}) {
+  appEl.innerHTML = `
+    <section class="panel">
+      <h1 class="panel__title">Pilih Menu Minggu Ini</h1>
+      <p class="panel__desc">Isi minimal 5 dari 15 slot menu. Klik sebuah slot untuk memilih resep dari menu bank — resep yang sama boleh dipakai di beberapa slot. Bahan-bahannya nanti otomatis digabung tanpa duplikasi.</p>
+      <div id="recipe-status" class="status"></div>
+      <div id="menu-slot-grid" class="menu-slot-grid"></div>
+      <div class="panel__footer">
+        <span id="selection-count" class="badge-mono">0/${SLOT_COUNT} terisi</span>
+        <button id="btn-next" class="btn btn--primary" disabled>Lanjut ke Review Stok →</button>
+      </div>
+    </section>
+  `;
+
+  const statusEl = document.getElementById("recipe-status");
+  const gridEl = document.getElementById("menu-slot-grid");
+  const countEl = document.getElementById("selection-count");
+  const nextBtn = document.getElementById("btn-next");
+
+  if (!isSupabaseConfigured) {
+    statusEl.innerHTML = `<div class="alert alert--warning">Supabase belum dikonfigurasi. Isi <code>js/config.js</code> dengan URL dan anon key project Supabase kamu, lalu muat ulang halaman.</div>`;
+    return;
+  }
+
+  statusEl.innerHTML = `<div class="alert alert--info">Memuat menu bank…</div>`;
+
+  try {
+    await ensureRecipesLoaded();
     statusEl.innerHTML = options.successMessage
       ? `<div class="alert alert--success">${escapeHtml(options.successMessage)}</div>`
       : "";
@@ -657,7 +755,7 @@ async function handleAddRecipeSubmit() {
     const successMessage = `Resep "${s.createdRecipeObj.name}" berhasil ditambahkan ke menu bank.`;
     s.submitting = false;
     closeAddRecipeModal();
-    renderStep1({ successMessage });
+    renderHome({ successMessage });
   } catch (err) {
     s.submitting = false;
     submitBtn.disabled = false;
@@ -791,6 +889,106 @@ function renderRecipePickerList() {
       closeRecipePickerModal();
       renderStep1();
     });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Modal "Detail Resep" — dipicu dari klik kartu resep di Home. Read-only,
+// tidak ada form.
+// ---------------------------------------------------------------------------
+function handleRecipeDetailKeydown(e) {
+  if (e.key === "Escape") closeRecipeDetailModal();
+}
+
+async function openRecipeDetailModal(recipeId) {
+  const recipe = allRecipes.find((r) => String(r.id) === String(recipeId));
+  if (!recipe) return;
+
+  recipeDetailState = { recipe, ingredients: [], loading: true, error: null };
+  renderRecipeDetailModal();
+  document.addEventListener("keydown", handleRecipeDetailKeydown);
+
+  try {
+    const rows = await fetchIngredientsForRecipes([recipe.id]);
+    if (!recipeDetailState) return; // modal sudah ditutup selagi fetch berjalan
+    recipeDetailState.ingredients = rows
+      .map((row) => row.ingredients)
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name, "id"));
+    recipeDetailState.loading = false;
+  } catch (err) {
+    if (!recipeDetailState) return;
+    recipeDetailState.loading = false;
+    recipeDetailState.error = err.message || String(err);
+  }
+  renderRecipeDetailModal();
+}
+
+function closeRecipeDetailModal() {
+  modalRootEl.innerHTML = "";
+  document.removeEventListener("keydown", handleRecipeDetailKeydown);
+  recipeDetailState = null;
+}
+
+function renderRecipeDetailModal() {
+  const s = recipeDetailState;
+  const recipe = s.recipe;
+  const initial = (recipe.name || "?").trim().charAt(0).toUpperCase();
+  const imgUrl = imageUrlFor(recipe);
+
+  modalRootEl.innerHTML = `
+    <div class="modal-backdrop" id="recipe-detail-backdrop">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="recipe-detail-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="recipe-detail-title">${escapeHtml(recipe.name)}</h2>
+          <button type="button" class="modal-close" id="recipe-detail-close" aria-label="Tutup">×</button>
+        </div>
+        <div class="modal-body">
+          ${
+            imgUrl
+              ? `<img class="recipe-detail__img" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(recipe.name)}" />`
+              : `<div class="recipe-detail__img recipe-detail__img--placeholder">${initial}</div>`
+          }
+          ${
+            recipe.description
+              ? `<p class="recipe-detail__description">${escapeHtml(recipe.description)}</p>`
+              : ""
+          }
+          <div class="field">
+            <div class="field__label">Bahan-Bahan</div>
+            <div class="selected-ingredient-list" id="recipe-detail-ingredients"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn--ghost" id="recipe-detail-close-btn">Tutup</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const ingredientsEl = document.getElementById("recipe-detail-ingredients");
+  if (s.loading) {
+    ingredientsEl.innerHTML = `<p class="selected-ingredient-list__empty">Memuat bahan…</p>`;
+  } else if (s.error) {
+    ingredientsEl.innerHTML = `<div class="alert alert--error">Gagal memuat bahan: ${escapeHtml(s.error)}</div>`;
+  } else if (s.ingredients.length === 0) {
+    ingredientsEl.innerHTML = `<p class="selected-ingredient-list__empty">Belum ada bahan tercatat untuk resep ini.</p>`;
+  } else {
+    ingredientsEl.innerHTML = s.ingredients
+      .map(
+        (ing) => `
+        <div class="selected-ingredient-row">
+          <span class="selected-ingredient-row__name">${escapeHtml(ing.name)}</span>
+          ${ing.category ? `<span class="tag">${escapeHtml(ing.category)}</span>` : ""}
+        </div>`
+      )
+      .join("");
+  }
+
+  document.getElementById("recipe-detail-close").addEventListener("click", closeRecipeDetailModal);
+  document.getElementById("recipe-detail-close-btn").addEventListener("click", closeRecipeDetailModal);
+  document.getElementById("recipe-detail-backdrop").addEventListener("click", (e) => {
+    if (e.target.id === "recipe-detail-backdrop") closeRecipeDetailModal();
   });
 }
 
@@ -998,10 +1196,33 @@ function renderStep3() {
 // Router sederhana + util
 // ---------------------------------------------------------------------------
 function render() {
-  renderStepper();
-  if (progress.step === 1) renderStep1();
-  else if (progress.step === 2) renderStep2();
-  else renderStep3();
+  renderBottomNav();
+  if (currentPage === "home") {
+    stepperEl.innerHTML = ""; // stepper wizard cuma relevan di This Week
+    renderHome();
+  } else {
+    renderStepper();
+    if (progress.step === 1) renderStep1();
+    else if (progress.step === 2) renderStep2();
+    else renderStep3();
+  }
+}
+
+function renderBottomNav() {
+  const navEl = document.getElementById("bottom-nav");
+  if (!navEl) return;
+  navEl.innerHTML = `
+    <button type="button" class="bottom-nav__item ${currentPage === "home" ? "bottom-nav__item--active" : ""}" id="nav-home">
+      <span class="bottom-nav__icon">🏠</span>
+      <span class="bottom-nav__label">Home</span>
+    </button>
+    <button type="button" class="bottom-nav__item ${currentPage === "week" ? "bottom-nav__item--active" : ""}" id="nav-week">
+      <span class="bottom-nav__icon">📅</span>
+      <span class="bottom-nav__label">This Week</span>
+    </button>
+  `;
+  document.getElementById("nav-home").addEventListener("click", () => setPage("home"));
+  document.getElementById("nav-week").addEventListener("click", () => setPage("week"));
 }
 
 function escapeHtml(str) {
